@@ -194,23 +194,26 @@ func DisableStorage(ctx context.Context, id uint) error {
 	if storage.Disabled {
 		return errors.Errorf("this storage have disabled")
 	}
-	storageDriver, err := GetStorageByMountPath(storage.MountPath)
-	if err != nil {
-		return errors.WithMessage(err, "failed get storage driver")
+	if HasStorage(storage.MountPath) {
+		storageDriver, err := GetStorageByMountPath(storage.MountPath)
+		if err != nil {
+			return errors.WithMessage(err, "failed get storage driver")
+		}
+		// drop the storage in the driver
+		if err := storageDriver.Drop(ctx); err != nil {
+			return errors.Wrap(err, "failed drop storage")
+		}
+		// delete the storage in the memory
+		storagesMap.Delete(storage.MountPath)
+		go callStorageHooks("del", storageDriver)
 	}
-	// drop the storage in the driver
-	if err := storageDriver.Drop(ctx); err != nil {
-		return errors.Wrap(err, "failed drop storage")
-	}
-	// delete the storage in the memory
+	// update storage in db
 	storage.Disabled = true
 	storage.SetStatus(DISABLED)
 	err = db.UpdateStorage(storage)
 	if err != nil {
 		return errors.WithMessage(err, "failed update storage in db")
 	}
-	storagesMap.Delete(storage.MountPath)
-	go callStorageHooks("del", storageDriver)
 	return nil
 }
 
